@@ -1,8 +1,9 @@
-const CACHE_NAME = 'weervergelijker-pwa-v1';
+const CACHE_NAME = 'weervergelijker-pwa-v2';
 const ASSETS = [
   './',
   './index.html',
-  './manifest.json'
+  './manifest.json',
+  'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js'
 ];
 
 self.addEventListener('install', (event) => {
@@ -22,8 +23,10 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Laat externe weer-API calls altijd via het netwerk lopen
-  if (!event.request.url.startsWith(self.location.origin)) {
+  const url = event.request.url;
+  const isAppAsset = url.startsWith(self.location.origin) || url.includes('cdn.jsdelivr.net');
+
+  if (!isAppAsset) {
     return;
   }
 
