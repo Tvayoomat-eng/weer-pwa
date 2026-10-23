@@ -627,99 +627,143 @@
     // STAP 2: DE 4 WEERBRONNEN (ACTUEEL + 72U PER UUR + 10 DAGEN)
     // =========================================================================
 
-    // 1. BUIENRADAR (Actuele feed + uitgebreide 14-daagse & uur-feed per station)
+    // Buienradar: een meetstation-ID is niet automatisch een forecastlocatie-ID.
+    // Zoek de plaats bij het GEKOZEN MEETSTATION, nooit bij de zoeklocatie.
+    function brDistanceKm(a, b) {
+      const rad = x => x * Math.PI / 180;
+      const dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
+      const v = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) *
+        Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
+      return 6371 * 2 * Math.asin(Math.sqrt(Math.min(1, Math.max(0, v))));
+    }
+    async function resolveBuienradarForecastLocation(station) {
+      const stationPoint = { lat: parseNum(station.lat), lon: parseNum(station.lon) };
+      if (stationPoint.lat === null || stationPoint.lon === null) {
+        throw new Error('Meetstation heeft geen geldige coordinaten.');
+      }
+      const name = String(station.stationname || '').replace(/^Meetstation\s+/i, '').trim();
+      if (!name) throw new Error('Meetstation heeft geen plaatsnaam.');
+      // Open-Meteo geocoding levert GeoNames-plaats-IDs; niet de KNMI-meetstationcode.
+      const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=20&language=nl&format=json&countryCode=NL`;
+      const geo = await fetchWithCorsFallback(url);
+      const candidates = (geo?.results || []).filter(x =>
+        x.country_code === 'NL' && Number.isInteger(Number(x.id)) && Number(x.id) > 0 &&
+        parseNum(x.latitude) !== null && parseNum(x.longitude) !== null
+      ).map(x => ({
+        id: Number(x.id), name: String(x.name || name),
+        lat: parseNum(x.latitude), lon: parseNum(x.longitude)
+      })).map(x => ({ ...x, distanceKm: brDistanceKm(stationPoint, x) }))
+        .sort((a, b) => a.distanceKm - b.distanceKm);
+      const chosen = candidates[0];
+      // Geen verre naamgenoot of stilzwijgende standaardlocatie accepteren.
+      if (!chosen || chosen.distanceKm > 15) {
+        throw new Error(`Geen forecastplaats binnen 15 km van station ${name} gevonden.`);
+      }
+      return chosen;
+    }
+    function brForecastHourKey(raw) {
+      const value = String(raw || '').trim();
+      if (!value) return null;
+      if (/(?:Z|[+-]\d{2}:?\d{2})$/i.test(value)) {
+        const date = new Date(value);
+        if (!Number.isFinite(date.getTime())) return null;
+        const parts = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit',
+          day: '2-digit', hour: '2-digit', hourCycle: 'h23'
+        }).formatToParts(date);
+        const get = type => parts.find(p => p.type === type)?.value;
+        return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:00`;
+      }
+      // Een tijd zonder offset wordt als Nederlandse lokale tijd behandeld.
+      const match = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):\d{2}/.exec(value);
+      return match ? `${match[1]}T${match[2]}:00` : null;
+    }
     async function fetchBuienradar(loc) {
       const color = '#0055a5';
       try {
-        const res = await fetch('https://data.buienradar.nl/2.0/feed/json');
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const stations = data?.actual?.stationmeasurements || [];
-        if (stations.length === 0) throw new Error('Geen meetstations in feed');
-
-        let nearest = stations[0];
-        let minDist = Infinity;
-        for (const st of stations) {
-          if (st.lat && st.lon) {
-            const d = Math.pow(st.lat - loc.lat, 2) + Math.pow(st.lon - loc.lon, 2);
-            if (d < minDist) {
-              minDist = d;
-              nearest = st;
-            }
-          }
-        }
-
-        const dailyMap = {};
-        const hourlyMap = {};
-
-        // Basis 5-daagse verwachting uit de hoofdfeed
-        const fiveDay = data?.forecast?.fivedayforecast || [];
-        for (const d of fiveDay) {
-          const dateKey = String(d.day || '').slice(0, 10);
-          if (dateKey) {
-            dailyMap[dateKey] = {
-              dateKey,
-              minTemp: parseNum(d.mintemperatureMin ?? d.mintemperatureMax),
-              maxTemp: parseNum(d.maxtemperatureMax ?? d.maxtemperatureMin),
-              rainChance: parseNum(d.rainChance),
-              rainMm: parseNum(d.mmRainMax),
-              iconEmoji: emojiFromDesc(d.weatherdescription || '')
-            };
-          }
-        }
-
-        // Haal uitgebreide 14-daagse + uurverwachting op voor het dichtstbijzijnde station
-        const stationId = nearest.stationid || 6260;
+        const data = await fetchWithCorsFallback('https://data.buienradar.nl/2.0/feed/json');
+        const stations = (data?.actual?.stationmeasurements || []).filter(st =>
+          parseNum(st.lat) !== null && parseNum(st.lon) !== null &&
+          parseNum(st.temperature) !== null
+        );
+        if (!stations.length) throw new Error('Geen meetstations met temperatuur en coordinaten.');
+        const nearest = stations.reduce((best, st) =>
+          brDistanceKm(loc, st) < brDistanceKm(loc, best) ? st : best
+        );
+        const stationName = String(nearest.stationname || '').replace(/^Meetstation\s+/i, '');
+        let dailyMap = {}, hourlyMap = {};
+        let forecastWarning = '', forecastLocation = null;
         try {
-          const extData = await fetchWithCorsFallback(`https://forecast.buienradar.nl/2.0/forecast/${stationId}`);
-          const extDays = extData?.days || [];
-          for (const d of extDays) {
+          forecastLocation = await resolveBuienradarForecastLocation(nearest);
+          const forecastUrl = `https://forecast.buienradar.nl/2.0/forecast/${forecastLocation.id}`;
+          const extData = await fetchWithCorsFallback(forecastUrl);
+          console.info('Buienradar locatiekoppeling', {
+            stationId: nearest.stationid, stationName,
+            stationCoordinates: { lat: nearest.lat, lon: nearest.lon },
+            forecastLocation, forecastUrl, response: extData
+          });
+          // Controleer de teruggegeven locatie wanneer de API deze meestuurt.
+          const metadata = extData?.location || extData?.geolocation || extData;
+          const responseLat = parseNum(metadata?.latitude ?? metadata?.lat);
+          const responseLon = parseNum(metadata?.longitude ?? metadata?.lon);
+          if (responseLat !== null && responseLon !== null &&
+              brDistanceKm({ lat: Number(nearest.lat), lon: Number(nearest.lon) },
+                { lat: responseLat, lon: responseLon }) > 15) {
+            throw new Error('Forecastrespons hoort bij een andere locatie.');
+          }
+          const days = extData?.days;
+          if (!Array.isArray(days) || !days.length) throw new Error('Geen geldige forecastdagen ontvangen.');
+          const nextDaily = {}, nextHourly = {};
+          for (const d of days) {
             const dateKey = String(d.date || d.datetime || '').slice(0, 10);
-            if (dateKey) {
-              dailyMap[dateKey] = {
+            if (/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+              nextDaily[dateKey] = {
                 dateKey,
-                minTemp: parseNum(d.mintemp ?? d.mintemperature ?? dailyMap[dateKey]?.minTemp),
-                maxTemp: parseNum(d.maxtemp ?? d.maxtemperature ?? dailyMap[dateKey]?.maxTemp),
-                rainChance: parseNum(d.precipitation ?? dailyMap[dateKey]?.rainChance),
-                rainMm: parseNum(d.precipitationmm ?? dailyMap[dateKey]?.rainMm),
+                minTemp: parseNum(d.mintemp ?? d.mintemperature),
+                maxTemp: parseNum(d.maxtemp ?? d.maxtemperature),
+                rainChance: parseNum(d.precipitation),
+                rainMm: parseNum(d.precipitationmm),
                 iconEmoji: buienradarIconToEmoji(d.iconcode, d.weatherdescription)
               };
             }
-            const hours = d.hours || [];
-            for (const h of hours) {
-              const rawDt = String(h.datetime || '');
-              if (rawDt.length >= 13) {
-                const hourKey = `${rawDt.slice(0, 13)}:00`;
-                hourlyMap[hourKey] = {
-                  temp: parseNum(h.temperature),
-                  rainChance: parseNum(h.precipitation),
-                  rainMm: parseNum(h.precipitationmm),
-                  iconEmoji: buienradarIconToEmoji(h.iconcode, h.weatherdescription)
-                };
-              }
+            for (const h of (Array.isArray(d.hours) ? d.hours : [])) {
+              const hourKey = brForecastHourKey(h.datetime);
+              if (hourKey) nextHourly[hourKey] = {
+                temp: parseNum(h.temperature), rainChance: parseNum(h.precipitation),
+                rainMm: parseNum(h.precipitationmm),
+                iconEmoji: buienradarIconToEmoji(h.iconcode, h.weatherdescription)
+              };
             }
           }
-        } catch (_) {
-          // Als forecast.buienradar.nl faalt, blijft de 5-daagse feed gewoon intact
+          if (!Object.values(nextDaily).some(d => d.minTemp !== null || d.maxTemp !== null) &&
+              !Object.values(nextHourly).some(h => h.temp !== null)) {
+            throw new Error('Forecast bevat geen herkenbare temperatuurvelden.');
+          }
+          dailyMap = nextDaily;
+          hourlyMap = nextHourly;
+        } catch (error) {
+          forecastWarning = `Verwachting niet beschikbaar: ${error.message}`;
+          console.warn('Buienradar forecast niet gebruikt:', error);
+          // Actueel blijft beschikbaar. Geen landelijke of andere bron als vervanging.
         }
-
         const desc = nearest.weatherdescription || 'Onbekend';
         return {
           sourceName: 'Buienradar',
-          subtitle: `Station ${(nearest.stationname || '').replace('Meetstation ', '')}`,
-          color,
-          isSuccess: true,
+          subtitle: `Station ${stationName} (${nearest.stationid ?? '?'})`,
+          color, isSuccess: true,
           currentTemp: parseNum(nearest.temperature),
           feelTemp: parseNum(nearest.feeltemperature),
-          currentDescription: desc,
-          currentEmoji: emojiFromDesc(desc),
+          currentDescription: desc, currentEmoji: emojiFromDesc(desc),
           windInfo: `${nearest.winddirection || ''} ${nearest.windspeedBft ?? '-'} Bft`.trim(),
           precipCurrentMm: parseNum(nearest.rainFallLastHour) ?? 0,
-          dailyMap,
-          hourlyMap
+          forecastLocation, forecastWarning,
+          forecastInfo: !forecastWarning && forecastLocation ?
+            `Verwachting: ${forecastLocation.name} (${forecastLocation.distanceKm.toFixed(1)} km van station)` : '',
+          dailyMap, hourlyMap
         };
       } catch (e) {
-        return { sourceName: 'Buienradar', subtitle: 'Niet beschikbaar', color, isSuccess: false, errorMessage: e.message, dailyMap: {}, hourlyMap: {} };
+        return { sourceName: 'Buienradar', subtitle: 'Niet beschikbaar', color,
+          isSuccess: false, errorMessage: e.message, dailyMap: {}, hourlyMap: {} };
       }
     }
 
@@ -997,7 +1041,7 @@
 
       try {
         const loc = await resolveLocation(query);
-        const cacheKey = `pwa_v2_cache_${loc.lat.toFixed(2)}_${loc.lon.toFixed(2)}`;
+        const cacheKey = `pwa_v3_stationforecast_cache_${loc.lat.toFixed(2)}_${loc.lon.toFixed(2)}`;
 
         if (!forceRefresh) {
           const rawCache = localStorage.getItem(cacheKey);
@@ -1073,6 +1117,8 @@
         const tempStr = s.currentTemp !== null ? `${s.currentTemp.toFixed(1)}°C` : '--°C';
         const feelStr = s.feelTemp !== null ? `Gevoel: ${s.feelTemp.toFixed(1)}°C<br/>` : '';
         const precipStr = s.precipCurrentMm !== null ? ` • ${s.precipCurrentMm.toFixed(1)} mm` : '';
+        const escapeForecast = value => String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const forecastNote = s.forecastWarning ? `<div class="error-box" style="margin-top:6px">${escapeForecast(s.forecastWarning)}</div>` : s.forecastInfo ? `<div class="meta-text" style="margin-top:6px">${escapeForecast(s.forecastInfo)}</div>` : '';
         return `
           <div class="source-card">
             <div class="source-header" style="background:${s.color}">
@@ -1086,6 +1132,7 @@
               </div>
               <div class="desc-text">${s.currentDescription || ''}</div>
               <div class="meta-text">${feelStr}Wind: ${s.windInfo || '-'}${precipStr}</div>
+              ${forecastNote}
             </div>
           </div>
         `;
