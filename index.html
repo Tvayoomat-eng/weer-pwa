@@ -627,114 +627,186 @@
     // STAP 2: DE 4 WEERBRONNEN (ACTUEEL + 72U PER UUR + 10 DAGEN)
     // =========================================================================
 
-  // 1. BUIENRADAR (Actuele feed + betrouwbare 5-daagse verwachting)
-async function fetchBuienradar(loc) {
-  const color = '#0055a5';
-  try {
-    const targetUrl = 'https://data.buienradar.nl/2.0/feed/json';
-    let data = null;
-
-    // Probeer eerst directe fetch (voor als het lokaal/native draait)
-    try {
-      const directRes = await fetch(targetUrl);
-      if (directRes.ok) data = await directRes.json();
-    } catch (_) {
-      // Direct mislukt door CORS, we schakelen over naar proxy
-    }
-
-    // Als direct niet werkte, probeer via betrouwbare proxy
-    if (!data) {
+    // 1. BUIENRADAR (Actuele feed + uitgebreide 14-daagse & uur-feed per station)
+    async function fetchBuienradar(loc) {
+      const color = '#0055a5';
       try {
-        const proxyRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`);
-        if (proxyRes.ok) {
-          const proxyJson = await proxyRes.json();
-          data = JSON.parse(proxyJson.contents);
+        const res = await fetch('https://data.buienradar.nl/2.0/feed/json');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const stations = data?.actual?.stationmeasurements || [];
+        if (stations.length === 0) throw new Error('Geen meetstations in feed');
+
+        let nearest = stations[0];
+        let minDist = Infinity;
+        for (const st of stations) {
+          if (st.lat && st.lon) {
+            const d = Math.pow(st.lat - loc.lat, 2) + Math.pow(st.lon - loc.lon, 2);
+            if (d < minDist) {
+              minDist = d;
+              nearest = st;
+            }
+          }
         }
-      } catch (_) {}
-    }
 
-    // Noodfallback via tweede proxy als allorigins hapert
-    if (!data) {
-      const fallbackRes = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
-      if (fallbackRes.ok) {
-        data = await fallbackRes.json();
-      }
-    }
+        const dailyMap = {};
+        const hourlyMap = {};
 
-    if (!data) {
-      throw new Error('Kon Buienradar feed niet laden via proxies');
-    }
-
-    const actual = data.actual || data.Actual || {};
-    const stations = actual.stationmeasurements || actual.WeatherStationMeasurements || [];
-    if (!stations.length) throw new Error('Geen meetstations in feed');
-
-    // Dichtstbijzijnde meetstation berekenen
-    let nearest = stations[0];
-    let minDist = Infinity;
-
-    for (const st of stations) {
-      const stLat = parseFloat(st.lat ?? st.Latitude ?? 0);
-      const stLon = parseFloat(st.lon ?? st.Longitude ?? 0);
-
-      if (stLat !== 0 && stLon !== 0 && !isNaN(stLat) && !isNaN(stLon)) {
-        const d = Math.pow(stLat - loc.lat, 2) + Math.pow(stLon - loc.lon, 2);
-        if (d < minDist) {
-          minDist = d;
-          nearest = st;
+        // Basis 5-daagse verwachting uit de hoofdfeed
+        const fiveDay = data?.forecast?.fivedayforecast || [];
+        for (const d of fiveDay) {
+          const dateKey = String(d.day || '').slice(0, 10);
+          if (dateKey) {
+            dailyMap[dateKey] = {
+              dateKey,
+              minTemp: parseNum(d.mintemperatureMin ?? d.mintemperatureMax),
+              maxTemp: parseNum(d.maxtemperatureMax ?? d.maxtemperatureMin),
+              rainChance: parseNum(d.rainChance),
+              rainMm: parseNum(d.mmRainMax),
+              iconEmoji: emojiFromDesc(d.weatherdescription || '')
+            };
+          }
         }
-      }
-    }
 
-    const dailyMap = {};
-    const hourlyMap = {};
+        // Haal uitgebreide 14-daagse + uurverwachting op voor het dichtstbijzijnde station
+        const stationId = nearest.stationid || 6260;
+        try {
+          const extData = await fetchWithCorsFallback(`https://forecast.buienradar.nl/2.0/forecast/${stationId}`);
+          const extDays = extData?.days || [];
+          for (const d of extDays) {
+            const dateKey = String(d.date || d.datetime || '').slice(0, 10);
+            if (dateKey) {
+              dailyMap[dateKey] = {
+                dateKey,
+                minTemp: parseNum(d.mintemp ?? d.mintemperature ?? dailyMap[dateKey]?.minTemp),
+                maxTemp: parseNum(d.maxtemp ?? d.maxtemperature ?? dailyMap[dateKey]?.maxTemp),
+                rainChance: parseNum(d.precipitation ?? dailyMap[dateKey]?.rainChance),
+                rainMm: parseNum(d.precipitationmm ?? dailyMap[dateKey]?.rainMm),
+                iconEmoji: buienradarIconToEmoji(d.iconcode, d.weatherdescription)
+              };
+            }
+            const hours = d.hours || [];
+            for (const h of hours) {
+              const rawDt = String(h.datetime || '');
+              if (rawDt.length >= 13) {
+                const hourKey = `${rawDt.slice(0, 13)}:00`;
+                hourlyMap[hourKey] = {
+                  temp: parseNum(h.temperature),
+                  rainChance: parseNum(h.precipitation),
+                  rainMm: parseNum(h.precipitationmm),
+                  iconEmoji: buienradarIconToEmoji(h.iconcode, h.weatherdescription)
+                };
+              }
+            }
+          }
+        } catch (_) {
+          // Als forecast.buienradar.nl faalt, blijft de 5-daagse feed gewoon intact
+        }
 
-    // 5-daagse verwachting direct uit de hoofdfeed (geen corrupte station-id feeds meer!)
-    const fiveDay = data.forecast?.fivedayforecast || data.Forecast?.FiveDayForecast || [];
-    for (const d of fiveDay) {
-      const rawDate = String(d.day || d.Day || '');
-      const dateKey = rawDate.slice(0, 10);
-      if (dateKey) {
-        dailyMap[dateKey] = {
-          dateKey,
-          minTemp: parseNum(d.mintemperatureMin ?? d.minTemperatureMin ?? d.mintemperatureMax),
-          maxTemp: parseNum(d.maxtemperatureMax ?? d.maxTemperatureMax ?? d.maxtemperatureMin),
-          rainChance: parseNum(d.rainChance ?? d.RainChance),
-          rainMm: parseNum(d.mmRainMax ?? d.MmRainMax),
-          iconEmoji: emojiFromDesc(d.weatherdescription || d.WeatherDescription || '')
+        const desc = nearest.weatherdescription || 'Onbekend';
+        return {
+          sourceName: 'Buienradar',
+          subtitle: `Station ${(nearest.stationname || '').replace('Meetstation ', '')}`,
+          color,
+          isSuccess: true,
+          currentTemp: parseNum(nearest.temperature),
+          feelTemp: parseNum(nearest.feeltemperature),
+          currentDescription: desc,
+          currentEmoji: emojiFromDesc(desc),
+          windInfo: `${nearest.winddirection || ''} ${nearest.windspeedBft ?? '-'} Bft`.trim(),
+          precipCurrentMm: parseNum(nearest.rainFallLastHour) ?? 0,
+          dailyMap,
+          hourlyMap
         };
+      } catch (e) {
+        return { sourceName: 'Buienradar', subtitle: 'Niet beschikbaar', color, isSuccess: false, errorMessage: e.message, dailyMap: {}, hourlyMap: {} };
       }
     }
 
-    const desc = nearest.weatherdescription ?? nearest.WeatherDescription ?? 'Onbekend';
-    const stationName = nearest.stationname ?? nearest.StationName ?? '';
+    // 2. KNMI / WEERLIVE (uur_verw + wk_verw)
+    async function fetchWeerlive(loc) {
+      const color = '#e65100';
+      const key = getWeerliveKey();
+      const isDemo = key.toLowerCase() === 'demo';
+      const locParam = isDemo ? 'Amsterdam' : `${loc.lat.toFixed(4)},${loc.lon.toFixed(4)}`;
+      const targetUrl = `https://weerlive.nl/api/weerlive_api_v2.php?key=${encodeURIComponent(key)}&locatie=${encodeURIComponent(locParam)}`;
 
-    return {
-      sourceName: 'Buienradar',
-      subtitle: `Station ${stationName.replace('Meetstation ', '')}`,
-      color,
-      isSuccess: true,
-      currentTemp: parseNum(nearest.temperature ?? nearest.Temperature),
-      feelTemp: parseNum(nearest.feeltemperature ?? nearest.FeelTemperature),
-      currentDescription: desc,
-      currentEmoji: emojiFromDesc(desc),
-      windInfo: `${nearest.winddirection ?? nearest.WindDirection ?? ''} ${nearest.windspeedBft ?? nearest.WindspeedBft ?? '-'} Bft`.trim(),
-      precipCurrentMm: parseNum(nearest.rainFallLastHour ?? nearest.RainFallLastHour) ?? 0,
-      dailyMap,
-      hourlyMap
-    };
-  } catch (e) {
-    return {
-      sourceName: 'Buienradar',
-      subtitle: 'Niet beschikbaar',
-      color,
-      isSuccess: false,
-      errorMessage: e.message,
-      dailyMap: {},
-      hourlyMap: {}
-    };
-  }
-}
+      try {
+        const data = await fetchWithCorsFallback(targetUrl);
+        if (!data || !data.liveweer || data.liveweer.length === 0) {
+          throw new Error('Geen geldige respons van Weerlive API.');
+        }
+
+        const live = data.liveweer[0];
+        if (live.fout) throw new Error(live.fout);
+
+        const dailyMap = {};
+        const wk = data.wk_verw || [];
+        for (const d of wk) {
+          // Formaat: DD-MM-YYYY
+          const parts = String(d.dag || '').split('-');
+          if (parts.length === 3) {
+            const dateKey = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            dailyMap[dateKey] = {
+              dateKey,
+              minTemp: parseNum(d.min_temp),
+              maxTemp: parseNum(d.max_temp),
+              rainChance: parseNum(d.neersl_perc_dag),
+              rainMm: null,
+              iconEmoji: emojiFromDesc(d.image || '')
+            };
+          }
+        }
+
+        const hourlyMap = {};
+        const uurVerw = data.uur_verw || [];
+        for (const u of uurVerw) {
+          // Formaat u.uur: "23-10-2026 15:00"
+          let hourKey = null;
+          const rawUur = String(u.uur || '').trim();
+          const spaceParts = rawUur.split(' ');
+          if (spaceParts.length === 2) {
+            const dParts = spaceParts[0].split('-');
+            const tParts = spaceParts[1].split(':');
+            if (dParts.length === 3 && tParts.length >= 1) {
+              const datePart = `${dParts[2]}-${dParts[1].padStart(2, '0')}-${dParts[0].padStart(2, '0')}`;
+              const hPart = tParts[0].padStart(2, '0');
+              hourKey = `${datePart}T${hPart}:00`;
+            }
+          } else if (u.timestamp) {
+            hourKey = toLocalHourKey(new Date(Number(u.timestamp) * 1000));
+          }
+
+          if (hourKey) {
+            hourlyMap[hourKey] = {
+              temp: parseNum(u.temp),
+              rainChance: null,
+              rainMm: parseNum(u.neersl),
+              iconEmoji: emojiFromDesc(u.image || '')
+            };
+          }
+        }
+
+        const desc = live.samenv || 'Onbekend';
+        return {
+          sourceName: 'KNMI / Weerlive',
+          subtitle: isDemo ? 'Demo (Amsterdam • 24u/5d)' : `KNMI (${live.plaats || loc.name} • 24u/5d)`,
+          color,
+          isSuccess: true,
+          currentTemp: parseNum(live.temp),
+          feelTemp: parseNum(live.gtemp),
+          currentDescription: desc,
+          currentEmoji: emojiFromDesc(desc),
+          windInfo: `${live.windr || ''} ${live.windbft ?? '-'} Bft`.trim(),
+          precipCurrentMm: null,
+          dailyMap,
+          hourlyMap
+        };
+      } catch (e) {
+        return { sourceName: 'KNMI / Weerlive', subtitle: 'Niet beschikbaar', color, isSuccess: false, errorMessage: e.message, dailyMap: {}, hourlyMap: {} };
+      }
+    }
+
     // 3. ACCUWEATHER (Met automatische detectie van 10d/72u vs gratis 5d/12u tier)
     async function fetchAccuWeather(loc) {
       const color = '#d97706';
