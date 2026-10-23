@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0284c7" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="WeerVergelijker" />
+  <title>WeerVergelijker NL</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230284c7'/%3E%3Ccircle cx='38' cy='40' r='16' fill='%23fbbf24'/%3E%3Cpath d='M32 68h38a14 14 0 0 0 0-28 18 18 0 0 0-34-6 13 13 0 0 0-4 34z' fill='%23ffffff'/%3E%3C/svg%3E" />
+
+  <style>
+    :root {
+      --bg: #f1f5f9;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --primary: #0284c7;
+      --primary-light: #e0f2fe;
+      --error: #dc2626;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f172a;
+        --card-bg: #1e293b;
+        --text: #f8fafc;
+        --text-muted: #94a3b8;
+        --border: #334155;
+        --primary: #38bdf8;
+        --primary-light: #0c4a6e;
+        --error: #f87171;
+        --shadow: 0 2px 6px rgba(0,0,0,0.35);
+      }
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.4;
+      padding-bottom: 32px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background-color: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: var(--shadow);
+    }
+
+    header h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 1rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
+    }
+
+    .icon-btn:active { opacity: 0.7; }
+    #installBtn { display: none; background: var(--primary); color: #fff; border-color: var(--primary); font-size: 0.85rem; }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 12px;
+    }
+
+    .search-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .search-bar input {
+      flex: 1;
+      padding: 11px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      color: var(--text);
+      font-size: 0.95rem;
+      outline: none;
+    }
+
+    .search-bar input:focus {
+      border-color: var(--primary);
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      padding: 0 18px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    .status-bar {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 4px;
+    }
+
+    .consensus-banner {
+      background: var(--primary-light);
+      border: 1px solid var(--primary);
+      border-radius: 14px;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .consensus-banner .label {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .consensus-banner .val-large {
+      font-size: 1.55rem;
+      font-weight: 800;
+    }
+
+    .consensus-banner .val-mid {
+      font-size: 1.05rem;
+      font-weight: 700;
+      text-align: right;
+    }
+
+    .section-title {
+      font-size: 1rem;
+      font-weight: 700;
+      margin: 16px 2px 10px;
+    }
+
+    .current-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    @media (min-width: 720px) {
+      .current-grid {
+        grid-template-columns: repeat(4, 1fr);
+      }
+    }
+
+    .source-card {
+      background: var(--card-bg);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      min-height: 180px;
+    }
+
+    .source-header {
+      padding: 8px 12px;
+      color: #ffffff;
+    }
+
+    .source-header h3 {
+      font-size: 0.9rem;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .source-header p {
+      font-size: 0.7rem;
+      opacity: 0.85;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .source-body {
+      padding: 12px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .temp-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .temp-val {
+      font-size: 1.45rem;
+      font-weight: 800;
+    }
+
+    .temp-emoji {
+      font-size: 1.65rem;
+    }
+
+    .desc-text {
+      font-size: 0.82rem;
+      font-weight: 600;
+      margin: 6px 0;
+    }
+
+    .meta-text {
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      line-height: 1.35;
+    }
+
+    .error-box {
+      font-size: 0.76rem;
+      color: var(--error);
+      margin: auto 0;
+    }
+
+    .day-card {
+      background: var(--card-bg);
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+    }
+
+    .day-card-header {
+      font-weight: 700;
+      font-size: 0.95rem;
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    table.forecast-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+
+    table.forecast-table th {
+      text-align: left;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.73rem;
+      padding-bottom: 6px;
+    }
+
+    table.forecast-table td {
+      padding: 6px 2px;
+      border-top: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+
+    .loader {
+      text-align: center;
+      padding: 48px 16px;
+      color: var(--text-muted);
+    }
+
+    /* Modal voor API-sleutels */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      padding: 16px;
+    }
+
+    .modal-backdrop.active { display: flex; }
+
+    .modal {
+      background: var(--card-bg);
+      color: var(--text);
+      width: 100%;
+      max-width: 440px;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+      border: 1px solid var(--border);
+    }
+
+    .modal h2 { font-size: 1.1rem; margin-bottom: 8px; }
+    .modal p { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 14px; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 4px; }
+    .form-group input {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 0.9rem;
+    }
+    .form-group small { display: block; font-size: 0.72rem; color: var(--text-muted); margin-top: 3px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🌦️ WeerVergelijker NL</h1>
+    <div class="header-actions">
+      <button id="installBtn" class="icon-btn" title="Installeer op startscherm">📲 Installeer</button>
+      <button id="keyBtn" class="icon-btn" title="API-sleutels instellen">🔑</button>
+      <button id="refreshBtn" class="icon-btn" title="Forceer verversen">🔄</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <form id="searchForm" class="search-bar">
+      <input type="text" id="searchInput" placeholder="Plaatsnaam of postcode (bijv. 1211 of Hilversum)..." value="Hilversum" required />
+      <button type="submit" class="btn-primary">Zoek</button>
+    </form>
+
+    <div id="statusBar" class="status-bar">Gereed om weerdata op te halen...</div>
+    <div id="appContent"></div>
+  </main>
+
+  <!-- API Key Instellingen Modal -->
+  <div id="keyModal" class="modal-backdrop">
+    <div class="modal">
+      <h2>🔑 API-sleutels beheren</h2>
+      <p>Sleutels worden veilig lokaal in je browser opgeslagen. Als je GitHub Secrets gebruikt, zijn deze hier al automatisch ingevuld.</p>
+      <div class="form-group">
+        <label for="weerliveInput">KNMI / Weerlive API Key</label>
+        <input type="text" id="weerliveInput" placeholder="demo" />
+        <small>Gratis aan te vragen op weerlive.nl (of laat op "demo" voor Amsterdam)</small>
+      </div>
+      <div class="form-group">
+        <label for="accuInput">AccuWeather API Key</label>
+        <input type="text" id="accuInput" placeholder="Plak hier je AccuWeather key..." />
+        <small>Gratis via developer.accuweather.com (50 calls/dag)</small>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="closeModalBtn" class="icon-btn">Annuleren</button>
+        <button type="button" id="saveKeysBtn" class="btn-primary" style="padding: 8px 16px;">Opslaan & Verversen</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // CONFIGURATIE & GITHUB SECRETS PLACEHOLDERS
+    // =========================================================================
+    const INJECTED_WEERLIVE_KEY = "__WEERLIVE_API_KEY__";
+    const INJECTED_ACCUWEATHER_KEY = "__ACCUWEATHER_API_KEY__";
+    const CACHE_MINUTES = 20;
+
+    function getWeerliveKey() {
+      const saved = localStorage.getItem('cfg_weerlive_key');
+      if (saved && saved.trim() !== '') return saved.trim();
+      if (!INJECTED_WEERLIVE_KEY.startsWith('__') && INJECTED_WEERLIVE_KEY !== '') {
+        return INJECTED_WEERLIVE_KEY;
+      }
+      return 'demo';
+    }
+
+    function getAccuWeatherKey() {
+      const saved = localStorage.getItem('cfg_accuweather_key');
+      if (saved && saved.trim() !== '') return saved.trim();
+      if (!INJECTED_ACCUWEATHER_KEY.startsWith('__') && INJECTED_ACCUWEATHER_KEY !== '') {
+        return INJECTED_ACCUWEATHER_KEY;
+      }
+      return '';
+    }
+
+    // =========================================================================
+    // HULPFUNCTIES
+    // =========================================================================
+    function parseNum(val) {
+      if (val === null || val === undefined) return null;
+      if (typeof val === 'number') return isNaN(val) ? null : val;
+      const parsed = parseFloat(String(val).trim().replace(',', '.'));
+      return isNaN(parsed) ? null : parsed;
+    }
+
+    function formatDayShort(dateStr) {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      const formatted = d.toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
+      return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+    }
+
+    function emojiFromDesc(desc) {
+      const l = (desc || '').toLowerCase();
+      if (l.includes('onweer') || l.includes('bliksem')) return '⛈️';
+      if (l.includes('sneeuw') || l.includes('hagel')) return '❄️';
+      if (l.includes('regen') || l.includes('bui') || l.includes('motregen')) {
+        return (l.includes('zon') || l.includes('opklaring')) ? '🌦️' : '🌧️';
+      }
+      if (l.includes('mist') || l.includes('nevel')) return '🌫️';
+      if (l.includes('zwaar bewolkt') || l.includes('betrokken')) return '☁️';
+      if (l.includes('half') || l.includes('licht bewolkt') || l.includes('wisselend') || l.includes('bewolkt')) return '⛅';
+      if (l.includes('zon') || l.includes('helder') || l.includes('onbewolkt')) return '☀️';
+      return '🌤️';
+    }
+
+    function wmoToDutch(code) {
+      const map = {
+        0: { desc: 'Onbewolkt', emoji: '☀️' },
+        1: { desc: 'Vrijwel onbewolkt', emoji: '🌤️' },
+        2: { desc: 'Half bewolkt', emoji: '⛅' },
+        3: { desc: 'Geheel bewolkt', emoji: '☁️' },
+        45: { desc: 'Mist', emoji: '🌫️' },
+        48: { desc: 'Rijpende mist', emoji: '🌫️' },
+        51: { desc: 'Lichte motregen', emoji: '🌦️' },
+        53: { desc: 'Motregen', emoji: '🌦️' },
+        55: { desc: 'Dichte motregen', emoji: '🌧️' },
+        61: { desc: 'Lichte regen', emoji: '🌦️' },
+        63: { desc: 'Matige regen', emoji: '🌧️' },
+        65: { desc: 'Zware regen', emoji: '🌧️' },
+        71: { desc: 'Lichte sneeuw', emoji: '❄️' },
+        73: { desc: 'Sneeuwval', emoji: '❄️' },
+        75: { desc: 'Zware sneeuwval', emoji: '❄️' },
+        80: { desc: 'Lichte regenbuien', emoji: '🌦️' },
+        81: { desc: 'Regenbuien', emoji: '🌦️' },
+        82: { desc: 'Zware buien', emoji: '🌧️' },
+        95: { desc: 'Onweer', emoji: '⛈️' },
+        96: { desc: 'Onweer met hagel', emoji: '⛈️' },
+        99: { desc: 'Zwaar onweer', emoji: '⛈️' }
+      };
+      return map[code] || { desc: 'Wisselend bewolkt', emoji: '⛅' };
+    }
+
+    // =========================================================================
+    // STAP 1: NEDERLANDSE PLAATSNAAM OF POSTCODE ZOEKEN (PDOK + FALLBACK)
+    // =========================================================================
+    async function resolveLocation(query) {
+      const clean = query.trim();
+      try {
+        const pdokUrl = `https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${encodeURIComponent(clean)}&rows=1&fq=type:(woonplaats%20OR%20postcode%20OR%20adres)`;
+        const res = await fetch(pdokUrl);
+        if (res.ok) {
+          const data = await res.json();
+          const docs = data?.response?.docs;
+          if (docs && docs.length > 0) {
+            const doc = docs[0];
+            const match = /POINT\(([-\d.]+)\s+([-\d.]+)\)/.exec(doc.centroide_ll || '');
+            if (match) {
+              return {
+                name: doc.woonplaatsnaam || doc.weergavenaam || clean,
+                lon: parseFloat(match[1]),
+                lat: parseFloat(match[2])
+              };
+            }
+          }
+        }
+      } catch (_) {}
+
+      // Fallback: Open-Meteo Geocoding
+      const omUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(clean)}&count=1&language=nl&format=json`;
+      const omRes = await fetch(omUrl);
+      if (omRes.ok) {
+        const omData = await omRes.json();
+        if (omData?.results?.length > 0) {
+          const first = omData.results[0];
+          return {
+            name: first.name || clean,
+            lat: first.latitude,
+            lon: first.longitude
+          };
+        }
+      }
+      throw new Error(`Plaats of postcode "${clean}" niet gevonden.`);
+    }
+
+    // =========================================================================
+    // STAP 2: DE 4 WEERBRONNEN OPHALEN (MET GRACEFUL DEGRADATION)
+    // =========================================================================
+
+    // 1. BUIENRADAR
+    async function fetchBuienradar(loc) {
+      const color = '#0055a5';
+      try {
+        const res = await fetch('https://data.buienradar.nl/2.0/feed/json');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const stations = data?.actual?.stationmeasurements || [];
+        if (stations.length === 0) throw new Error('Geen meetstations in feed');
+
+        let nearest = stations[0];
+        let minDist = Infinity;
+        for (const st of stations) {
+          if (st.lat && st.lon) {
+            const d = Math.pow(st.lat - loc.lat, 2) + Math.pow(st.lon - loc.lon, 2);
+            if (d < minDist) {
+              minDist = d;
+              nearest = st;
+            }
+          }
+        }
+
+        const fiveDay = data?.forecast?.fivedayforecast || [];
+        const forecast = fiveDay.slice(0, 3).map((d, idx) => {
+          const desc = d.weatherdescription || 'Wisselend';
+          return {
+            dateLabel: d.day ? formatDayShort(d.day) : `Dag ${idx + 1}`,
+            minTemp: parseNum(d.mintemperatureMin ?? d.mintemperatureMax),
+            maxTemp: parseNum(d.maxtemperatureMax ?? d.maxtemperatureMin),
+            rainChance: parseNum(d.rainChance),
+            rainMm: parseNum(d.mmRainMax),
+            iconEmoji: emojiFromDesc(desc)
+          };
+        });
+
+        const desc = nearest.weatherdescription || 'Onbekend';
+        return {
+          sourceName: 'Buienradar',
+          subtitle: `Station ${(nearest.stationname || '').replace('Meetstation ', '')}`,
+          color,
+          isSuccess: true,
+          currentTemp: parseNum(nearest.temperature),
+          feelTemp: parseNum(nearest.feeltemperature),
+          currentDescription: desc,
+          currentEmoji: emojiFromDesc(desc),
+          windInfo: `${nearest.winddirection || ''} ${nearest.windspeedBft ?? '-'} Bft`.trim(),
+          precipCurrentMm: parseNum(nearest.rainFallLastHour) ?? 0,
+          forecast
+        };
+      } catch (e) {
+        return { sourceName: 'Buienradar', subtitle: 'Niet beschikbaar', color, isSuccess: false, errorMessage: `Kon Buienradar niet laden (${e.message})` };
+      }
+    }
+
+    // 2. KNMI / WEERLIVE (Inclusief automatische CORS-proxy fallback voor browsers)
+    async function fetchWeerlive(loc) {
+      const color = '#e65100';
+      const key = getWeerliveKey();
+      const isDemo = key.toLowerCase() === 'demo';
+      const locParam = isDemo ? 'Amsterdam' : `${loc.lat.toFixed(4)},${loc.lon.toFixed(4)}`;
+      const targetUrl = `https://weerlive.nl/api/weerlive_api_v2.php?key=${encodeURIComponent(key)}&locatie=${encodeURIComponent(locParam)}`;
+
+      try {
+        let data = null;
+        try {
+          const directRes = await fetch(targetUrl);
+          if (directRes.ok) data = await directRes.json();
+        } catch (_) {
+          // Automatische fallback via CORS-proxy als de browser directe aanroep blokkeert
+          const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+          const proxyRes = await fetch(proxyUrl);
+          if (proxyRes.ok) data = await proxyRes.json();
+        }
+
+        if (!data || !data.liveweer || data.liveweer.length === 0) {
+          throw new Error('Geen geldige respons van Weerlive API.');
+        }
+
+        const live = data.liveweer[0];
+        if (live.fout) throw new Error(live.fout);
+
+        const wk = data.wk_verw || [];
+        const startIdx = wk.length > 3 ? 1 : 0;
+        const forecast = wk.slice(startIdx, startIdx + 3).map((d, idx) => {
+          let label = d.dag || `Dag ${idx + 1}`;
+          const parts = String(d.dag).split('-');
+          if (parts.length === 3) {
+            label = formatDayShort(`${parts[2]}-${parts[1]}-${parts[0]}`);
+          }
+          return {
+            dateLabel: label,
+            minTemp: parseNum(d.min_temp),
+            maxTemp: parseNum(d.max_temp),
+            rainChance: parseNum(d.neersl_perc_dag),
+            rainMm: null,
+            iconEmoji: emojiFromDesc(d.image || '')
+          };
+        });
+
+        const desc = live.samenv || 'Onbekend';
+        return {
+          sourceName: 'KNMI / Weerlive',
+          subtitle: isDemo ? 'Demo-key (toont Amsterdam)' : `KNMI (${live.plaats || loc.name})`,
+          color,
+          isSuccess: true,
+          currentTemp: parseNum(live.temp),
+          feelTemp: parseNum(live.gtemp),
+          currentDescription: desc,
+          currentEmoji: emojiFromDesc(desc),
+          windInfo: `${live.windr || ''} ${live.windbft ?? '-'} Bft`.trim(),
+          precipCurrentMm: null,
+          forecast
+        };
+      } catch (e) {
+        return { sourceName: 'KNMI / Weerlive', subtitle: 'Niet beschikbaar', color, isSuccess: false, errorMessage: e.message };
+      }
+    }
+
+    // 3. ACCUWEATHER (Met permanente LocationKey caching om de 50 calls/dag limiet te sparen)
+    async function fetchAccuWeather(loc) {
+      const color = '#d97706';
+      const key = getAccuWeatherKey();
+      if (!key) {
+        return {
+          sourceName: 'AccuWeather',
+          subtitle: 'API-sleutel vereist',
+          color,
+          isSuccess: false,
+          errorMessage: 'Geen AccuWeather API-key ingesteld. Klik rechtsboven op 🔑 om je sleutel in te vullen.'
+        };
+      }
+
+      try {
+        const coordKey = `accu_lockey_${loc.lat.toFixed(2)}_${loc.lon.toFixed(2)}`;
+        let locationKey = localStorage.getItem(coordKey);
+
+        if (!locationKey) {
+          const geoUrl = `https://dataservice.accuweather.com/locations/v1/cities/geoposition/search?apikey=${encodeURIComponent(key)}&q=${loc.lat},${loc.lon}&language=nl-nl`;
+          const geoRes = await fetch(geoUrl);
+          if (geoRes.status === 401 || geoRes.status === 403) {
+            throw new Error('Ongeldige API-key of daglimiet (50 calls) bereikt.');
+          }
+          if (!geoRes.ok) throw new Error(`Locatie-lookup fout (HTTP ${geoRes.status})`);
+          const geoData = await geoRes.json();
+          locationKey = geoData?.Key;
+          if (!locationKey) throw new Error('Geen LocationKey gevonden.');
+          localStorage.setItem(coordKey, locationKey);
+        }
+
+        const currUrl = `https://dataservice.accuweather.com/currentconditions/v1/${locationKey}?apikey=${encodeURIComponent(key)}&language=nl-nl&details=true`;
+        const foreUrl = `https://dataservice.accuweather.com/forecasts/v1/daily/5day/${locationKey}?apikey=${encodeURIComponent(key)}&language=nl-nl&metric=true&details=true`;
+
+        const [currRes, foreRes] = await Promise.all([fetch(currUrl), fetch(foreUrl)]);
+        if (!currRes.ok || !foreRes.ok) {
+          throw new Error(`API-limiet bereikt of fout (${currRes.status}/${foreRes.status})`);
+        }
+
+        const currList = await currRes.json();
+        const curr = currList[0] || {};
+        const foreData = await foreRes.json();
+        const daily = foreData?.DailyForecasts || [];
+
+        const forecast = daily.slice(0, 3).map((d, idx) => {
+          const phrase = d?.Day?.IconPhrase || 'Wisselend';
+          return {
+            dateLabel: d.Date ? formatDayShort(d.Date) : `Dag ${idx + 1}`,
+            minTemp: parseNum(d?.Temperature?.Minimum?.Value),
+            maxTemp: parseNum(d?.Temperature?.Maximum?.Value),
+            rainChance: parseNum(d?.Day?.PrecipitationProbability),
+            rainMm: parseNum(d?.Day?.TotalLiquid?.Value),
+            iconEmoji: emojiFromDesc(phrase)
+          };
+        });
+
+        const wText = curr.WeatherText || 'Onbekend';
+        const windSpeed = parseNum(curr?.Wind?.Speed?.Metric?.Value);
+        const windDir = curr?.Wind?.Direction?.Localized || '';
+
+        return {
+          sourceName: 'AccuWeather',
+          subtitle: `Locatie-ID: ${locationKey}`,
+          color,
+          isSuccess: true,
+          currentTemp: parseNum(curr?.Temperature?.Metric?.Value),
+          feelTemp: parseNum(curr?.RealFeelTemperature?.Metric?.Value),
+          currentDescription: wText,
+          currentEmoji: emojiFromDesc(wText),
+          windInfo: `${windDir} ${windSpeed !== null ? Math.round(windSpeed) : '-'} km/u`.trim(),
+          precipCurrentMm: parseNum(curr?.Precip1hr?.Metric?.Value),
+          forecast
+        };
+      } catch (e) {
+        return { sourceName: 'AccuWeather', subtitle: 'Niet beschikbaar', color, isSuccess: false, errorMessage: e.message };
+      }
+    }
+
+    // 4. OPEN-METEO
+    async function fetchOpenMeteo(loc) {
+      const color = '#16a34a';
+      try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&current=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&timezone=Europe%2FAmsterdam&forecast_days=4`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        const curr = data.current || {};
+        const daily = data.daily || {};
+        const wmo = wmoToDutch(curr.weather_code);
+
+        const times = daily.time || [];
+        const startIdx = times.length >= 4 ? 1 : 0;
+        const forecast = [];
+
+        for (let i = startIdx; i < Math.min(startIdx + 3, times.length); i++) {
+          const dWmo = wmoToDutch(daily.weather_code?.[i]);
+          forecast.push({
+            dateLabel: formatDayShort(times[i]),
+            minTemp: parseNum(daily.temperature_2m_min?.[i]),
+            maxTemp: parseNum(daily.temperature_2m_max?.[i]),
+            rainChance: parseNum(daily.precipitation_probability_max?.[i]),
+            rainMm: parseNum(daily.precipitation_sum?.[i]),
+            iconEmoji: dWmo.emoji
+          });
+        }
+
+        return {
+          sourceName: 'Open-Meteo',
+          subtitle: 'ECMWF / KNMI Harmonie',
+          color,
+          isSuccess: true,
+          currentTemp: parseNum(curr.temperature_2m),
+          feelTemp: parseNum(curr.apparent_temperature),
+          currentDescription: wmo.desc,
+          currentEmoji: wmo.emoji,
+          windInfo: `${curr.wind_speed_10m !== undefined ? Math.round(curr.wind_speed_10m) : '-'} km/u`,
+          precipCurrentMm: parseNum(curr.precipitation),
+          forecast
+        };
+      } catch (e) {
+        return { sourceName: 'Open-Meteo', subtitle: 'Niet beschikbaar', color, isSuccess: false, errorMessage: e.message };
+      }
+    }
+
+    // =========================================================================
+    // DASHBOARD RENDERING & LOKALE CACHING (20 MINUTEN)
+    // =========================================================================
+    const statusBar = document.getElementById('statusBar');
+    const appContent = document.getElementById('appContent');
+    const searchInput = document.getElementById('searchInput');
+
+    async function loadWeather(forceRefresh = false) {
+      const query = searchInput.value.trim();
+      if (!query) return;
+
+      localStorage.setItem('cfg_last_search', query);
+      appContent.innerHTML = `<div class="loader">⏳ Weerbronnen ophalen en vergelijken voor <b>${query}</b>...</div>`;
+
+      try {
+        const loc = await resolveLocation(query);
+        const cacheKey = `pwa_cache_${loc.lat.toFixed(2)}_${loc.lon.toFixed(2)}`;
+
+        if (!forceRefresh) {
+          const rawCache = localStorage.getItem(cacheKey);
+          if (rawCache) {
+            const parsed = JSON.parse(rawCache);
+            const ageMin = (Date.now() - parsed.timestamp) / 60000;
+            if (ageMin < CACHE_MINUTES) {
+              renderDashboard(loc, parsed.sources, new Date(parsed.timestamp), true);
+              return;
+            }
+          }
+        }
+
+        const sources = await Promise.all([
+          fetchBuienradar(loc),
+          fetchWeerlive(loc),
+          fetchAccuWeather(loc),
+          fetchOpenMeteo(loc)
+        ]);
+
+        const now = Date.now();
+        localStorage.setItem(cacheKey, JSON.stringify({ timestamp: now, sources }));
+        renderDashboard(loc, sources, new Date(now), false);
+      } catch (err) {
+        statusBar.textContent = 'Er is een fout opgetreden.';
+        appContent.innerHTML = `<div class="loader" style="color: var(--error); font-weight: 600;">⚠️ ${err.message}</div>`;
+      }
+    }
+
+    function renderDashboard(loc, sources, updatedDate, fromCache) {
+      const timeStr = updatedDate.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+      statusBar.innerHTML = `${fromCache ? '⚡ Uit lokale cache' : '☁️ Live opgehaald'} • <b>${loc.name}</b> (${loc.lat.toFixed(2)}, ${loc.lon.toFixed(2)}) om ${timeStr} (20m cache)`;
+
+      const validTemps = sources.filter(s => s.isSuccess && s.currentTemp !== null).map(s => s.currentTemp);
+      let consensusHtml = '';
+      if (validTemps.length > 0) {
+        const avg = validTemps.reduce((a, b) => a + b, 0) / validTemps.length;
+        const minT = Math.min(...validTemps);
+        const maxT = Math.max(...validTemps);
+        consensusHtml = `
+          <div class="consensus-banner">
+            <div>
+              <div class="label">Gemiddelde (${validTemps.length} bronnen)</div>
+              <div class="val-large">${avg.toFixed(1)} °C</div>
+            </div>
+            <div>
+              <div class="label" style="text-align:right;">Spreiding</div>
+              <div class="val-mid">${minT.toFixed(1)}° t/m ${maxT.toFixed(1)}°C</div>
+            </div>
+          </div>
+        `;
+      }
+
+      const currentCardsHtml = sources.map(s => {
+        if (!s.isSuccess) {
+          return `
+            <div class="source-card">
+              <div class="source-header" style="background:${s.color}">
+                <h3>${s.sourceName}</h3>
+                <p>${s.subtitle}</p>
+              </div>
+              <div class="source-body">
+                <div class="error-box">${s.errorMessage}</div>
+              </div>
+            </div>
+          `;
+        }
+        const tempStr = s.currentTemp !== null ? `${s.currentTemp.toFixed(1)}°C` : '--°C';
+        const feelStr = s.feelTemp !== null ? `Gevoel: ${s.feelTemp.toFixed(1)}°C<br/>` : '';
+        const precipStr = s.precipCurrentMm !== null ? ` • ${s.precipCurrentMm.toFixed(1)} mm` : '';
+        return `
+          <div class="source-card">
+            <div class="source-header" style="background:${s.color}">
+              <h3>${s.sourceName}</h3>
+              <p>${s.subtitle}</p>
+            </div>
+            <div class="source-body">
+              <div class="temp-row">
+                <span class="temp-val">${tempStr}</span>
+                <span class="temp-emoji">${s.currentEmoji || '🌤️'}</span>
+              </div>
+              <div class="desc-text">${s.currentDescription || ''}</div>
+              <div class="meta-text">
+                ${feelStr}Wind: ${s.windInfo || '-'}${precipStr}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      let daysHtml = '';
+      for (let dayIdx = 0; dayIdx < 3; dayIdx++) {
+        let dayTitle = `Dag ${dayIdx + 1}`;
+        for (const s of sources) {
+          if (s.isSuccess && s.forecast && s.forecast[dayIdx]) {
+            dayTitle = s.forecast[dayIdx].dateLabel;
+            break;
+          }
+        }
+
+        const rowsHtml = sources.map(s => {
+          const d = (s.isSuccess && s.forecast && s.forecast[dayIdx]) ? s.forecast[dayIdx] : null;
+          if (!d) {
+            return `
+              <tr>
+                <td><span class="dot" style="background:${s.color}"></span><b>${s.sourceName}</b></td>
+                <td>—</td>
+                <td style="color:var(--text-muted)">Niet besch.</td>
+                <td>—</td>
+              </tr>
+            `;
+          }
+          const minStr = d.minTemp !== null ? Math.round(d.minTemp) : '-';
+          const maxStr = d.maxTemp !== null ? Math.round(d.maxTemp) : '-';
+          const parts = [];
+          if (d.rainChance !== null) parts.push(`${Math.round(d.rainChance)}%`);
+          if (d.rainMm !== null) parts.push(`${d.rainMm.toFixed(1)}mm`);
+          const rainStr = parts.length > 0 ? parts.join(' • ') : '-';
+
+          return `
+            <tr>
+              <td><span class="dot" style="background:${s.color}"></span><b>${s.sourceName}</b></td>
+              <td style="font-size:1.15rem">${d.iconEmoji}</td>
+              <td>${minStr}° / <b>${maxStr}°C</b></td>
+              <td>${rainStr}</td>
+            </tr>
+          `;
+        }).join('');
+
+        daysHtml += `
+          <div class="day-card">
+            <div class="day-card-header">📅 ${dayTitle}</div>
+            <table class="forecast-table">
+              <thead>
+                <tr>
+                  <th style="width:38%">Bron</th>
+                  <th style="width:14%">Weer</th>
+                  <th style="width:24%">Min / Max</th>
+                  <th style="width:24%">Neerslag</th>
+                </tr>
+              </thead>
+              <tbody>${rowsHtml}</tbody>
+            </table>
+          </div>
+        `;
+      }
+
+      appContent.innerHTML = `
+        ${consensusHtml}
+        <div class="section-title">Actuele Status (4 Bronnen)</div>
+        <div class="current-grid">${currentCardsHtml}</div>
+        <div class="section-title">3-Daagse Verwachting Naast Elkaar</div>
+        ${daysHtml}
+      `;
+    }
+
+    // =========================================================================
+    // EVENTS, MODAL & PWA SERVICE WORKER REGISTRATIE
+    // =========================================================================
+    document.getElementById('searchForm').addEventListener('submit', e => {
+      e.preventDefault();
+      loadWeather(false);
+    });
+
+    document.getElementById('refreshBtn').addEventListener('click', () => loadWeather(true));
+
+    const keyModal = document.getElementById('keyModal');
+    const weerliveInput = document.getElementById('weerliveInput');
+    const accuInput = document.getElementById('accuInput');
+
+    document.getElementById('keyBtn').addEventListener('click', () => {
+      weerliveInput.value = getWeerliveKey();
+      accuInput.value = getAccuWeatherKey();
+      keyModal.classList.add('active');
+    });
+
+    document.getElementById('closeModalBtn').addEventListener('click', () => {
+      keyModal.classList.remove('active');
+    });
+
+    document.getElementById('saveKeysBtn').addEventListener('click', () => {
+      localStorage.setItem('cfg_weerlive_key', weerliveInput.value.trim());
+      localStorage.setItem('cfg_accuweather_key', accuInput.value.trim());
+      keyModal.classList.remove('active');
+      loadWeather(true);
+    });
+
+    // Installeer-knop voor Android Chrome
+    let deferredPrompt = null;
+    const installBtn = document.getElementById('installBtn');
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      installBtn.style.display = 'inline-flex';
+    });
+
+    installBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      installBtn.style.display = 'none';
+    });
+
+    // Registreer Service Worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    }
+
+    // Initialiseren
+    const lastSearch = localStorage.getItem('cfg_last_search');
+    if (lastSearch) searchInput.value = lastSearch;
+    loadWeather(false);
+  </script>
+</body>
+</html>
